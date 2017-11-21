@@ -2,27 +2,35 @@ package xyz.imxqd.stopwatch;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.content.res.Configuration;
+import android.graphics.drawable.Icon;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
-import android.util.Log;
 import android.view.View;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.Arrays;
 import java.util.Locale;
 
 
 public class MainActivity extends Activity implements View.OnClickListener {
 
+    private static final String ACTION_START_PAUSE = "action_start_or_pause";
     private static final String ARG_START_TIME = "start_time";
     private static final String ARG_IS_RUNNING = "is_running";
     private static final String ARG_RECORDS = "records";
     private static final String ARG_RECORD_COUNT = "record_count";
     private static final String ARG_TIME = "time";
+
+    private ShortcutManager mShortcutManager;
 
     private ScrollView mScrollView;
     private TextView mTvScreen;
@@ -50,7 +58,6 @@ public class MainActivity extends Activity implements View.OnClickListener {
             setContentView(R.layout.activity_main);
         }
         initViews();
-
         if (mRecordCount != 0) {
             mTvDisplay.setText(p.getString(ARG_RECORDS, ""));
         }
@@ -62,6 +69,10 @@ public class MainActivity extends Activity implements View.OnClickListener {
         } else {
             mTvStartPause.setText(R.string.start);
         }
+        if (ACTION_START_PAUSE.equals(getIntent().getAction())) {
+            onStartOrPauseClick();
+        }
+        initAppShortcut();
     }
 
     private void initViews() {
@@ -75,6 +86,24 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mTvStartPause.setOnClickListener(this);
         mTvRecord.setOnClickListener(this);
         mTvClear.setOnClickListener(this);
+    }
+
+    private void initAppShortcut() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1) {
+            mShortcutManager = getSystemService(ShortcutManager.class);
+            Intent intent = new Intent(this, this.getClass());
+            intent.setAction(ACTION_START_PAUSE);
+            ShortcutInfo.Builder shortcut = new ShortcutInfo.Builder(this, "id1")
+                    .setIcon(Icon.createWithResource(this, R.drawable.ic_launcher))
+                    .setIntent(intent) ;
+            if (isRunning) {
+                shortcut.setShortLabel(getString(R.string.pause));
+            } else {
+                shortcut.setShortLabel(getString(R.string.start));
+            }
+
+            mShortcutManager.setDynamicShortcuts(Arrays.asList(shortcut.build()));
+        }
     }
 
     @Override
@@ -99,26 +128,30 @@ public class MainActivity extends Activity implements View.OnClickListener {
         }
     }
 
+    private void onStartOrPauseClick() {
+        if (isRunning) {
+            mTvStartPause.setText(R.string.start);
+            isRunning = false;
+            mHandler.removeCallbacksAndMessages(null);
+        } else {
+            if (mStartTime == 0) {
+                // 重新开始
+                mStartTime = SystemClock.elapsedRealtime();
+            } else {
+                // 继续
+                mStartTime = SystemClock.elapsedRealtime() - setTimeRunnable.time;
+            }
+            mTvStartPause.setText(R.string.pause);
+            isRunning = true;
+            mHandler.post(setTimeRunnable);
+        }
+        initAppShortcut();
+    }
+
     @Override
     public void onClick(View v) {
         if (v.getId() == R.id.tv_start_pause) {
-            if (isRunning) {
-                mTvStartPause.setText(R.string.start);
-                isRunning = false;
-                mHandler.removeCallbacksAndMessages(null);
-            } else {
-                if (mStartTime == 0) {
-                    // 重新开始
-                    mStartTime = SystemClock.elapsedRealtime();
-                } else {
-                    // 继续
-                    mStartTime = SystemClock.elapsedRealtime() - setTimeRunnable.time;
-                }
-                mTvStartPause.setText(R.string.pause);
-                isRunning = true;
-                mHandler.post(setTimeRunnable);
-            }
-
+            onStartOrPauseClick();
         } else if (v.getId() == R.id.tv_record) {
             if (isRunning) {
                 mRecordCount++;
